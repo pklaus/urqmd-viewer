@@ -1,0 +1,5 @@
+urqmd_tools
+vispy
+numpy
+attrs
+PyQt5
