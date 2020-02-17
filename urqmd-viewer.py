@@ -19,17 +19,6 @@ import pickle
 
 r = np.random.RandomState(1237+80)
 
-# GLOBAL Variables
-PARTICLES = None
-PS_TS = None
-DURATION = None
-BEFORE = None
-AFTER = None
-CMS_BETA = None
-BOOST_BETA = None
-WIDTH = None
-HEIGHT = None
-
 VERT_SHADER = """
 #version 120
 
@@ -120,8 +109,10 @@ class HICCanvas(app.Canvas):
 
     pid_colors = {urqmdpid.id: r.uniform(low=0.2, high=1.0, size=4) for urqmdpid in ALL_SORTED}
 
-    def __init__(self, b=7, a=23, fmps=2, cb=0.9224028, bb=0.0, sf=10, w=1920, h=1080, t='dark', c='by_pid'):
+    def __init__(self, pts, ts, b=7, a=23, fmps=2, cb=0.9224028, bb=0.0, sf=10, w=1920, h=1080, t='dark', c='by_pid'):
         """
+        pts: particles at different timesteps
+        ts: list of the timesteps (in fm/c)
         b: before
         a: after
         fmps: fm per second (relation speed of light to visualization time)
@@ -136,6 +127,8 @@ class HICCanvas(app.Canvas):
 
         start = time.time()
 
+        self.pts = pts # the particles in the time evolution
+        self.ts = ts # the timesteps for self.pts
         self.b = b # amount of s before t0
         self.a = a # amount of s after t0
         self.fmps = fmps # fm / s
@@ -169,7 +162,7 @@ class HICCanvas(app.Canvas):
         self.ps = self.pixel_scale
         print(f"{self.pixel_scale=}")
 
-        n = max([len(ps) for ps in PS_TS])
+        n = max([len(ps) for ps in self.pts])
         self.n = n
         print("maximum number of particles =", n)
         self.particles = np.zeros(n, [('a_position', 'f4', 3),
@@ -388,7 +381,7 @@ class HICCanvas(app.Canvas):
             now = self.pause_started
         else:
             now = time.time()
-        t = (now - self.start) % DURATION - BEFORE
+        t = (now - self.start) % (self.a + self.b) - self.b
         t_fm = t * self.fmps # time in fm before (-) or after (+) the collision
         self.upper_left_text.text = self.time_fmt.format(t_fm)
         #print(f"      {t:.1f} s  ~  {t_fm:.1f} fm")
@@ -405,29 +398,30 @@ class HICCanvas(app.Canvas):
         mesons += [-meson for meson in mesons]
 
 
-        if t <= TIMESTEPS[0]:
-            t_fm_0 = TIMESTEPS[0] # initial timestep
-            #self.particles = np.zeros(len(INITIAL), [('a_position', 'f4', 3),
+        if t <= self.ts[0]:
+            t_fm_0 = self.ts[0] # initial timestep
+            ps = self.pts[0]
+            #self.particles = np.zeros(len(ps), [('a_position', 'f4', 3),
             #                              ('a_color', 'f4', 4),
             #                              ('a_radius', 'f4')])
-            self.particles['a_position'][0:len(INITIAL)] = np.array([[p.rx, p.ry, p.rz] for p in INITIAL])
+            self.particles['a_position'][0:len(ps)] = np.array([[p.rx, p.ry, p.rz]
+                                                                for p in ps])
             self.particles['a_position'][:,2] += np.where(
                 self.particles['a_position'][:,2] < 0,
                 (t_fm-t_fm_0)*( self.cb+self.bb)/(1+self.cb*self.bb),
                 (t_fm-t_fm_0)*(-self.cb+self.bb)/(1+self.cb*self.bb)
             )
             # move everything else away...
-            self.particles['a_position'][len(INITIAL):] = 100000, 100000, 100000
-            ps = INITIAL
+            self.particles['a_position'][len(ps):] = 100000, 100000, 100000
         else:
             # find the best suiting timestamp for interpolation:
-            for i, ts_fm in enumerate(TIMESTEPS):
+            for i, ts_fm in enumerate(self.ts):
                 if t_fm <= ts_fm:
                     break
             t_fm_0 = ts_fm
             d_t_fm = t_fm - t_fm_0
             # fetch the particle set belonging to that timestep
-            ps = PS_TS[i]
+            ps = self.pts[i]
             #self.particles = np.zeros(len(ps), [('a_position', 'f4', 3),
             #                              ('a_color', 'f4', 4),
             #                              ('a_radius', 'f4')])
@@ -501,8 +495,6 @@ class HICCanvas(app.Canvas):
         self.update()
 
 def main():
-    global PARTICLES, PS_TS, DURATION, BEFORE, AFTER, TOTAL_FM, FM_PER_SEC, INITIAL, WIDTH, HEIGHT, TIMESTEPS, CMS_BETA, BOOST_BETA
-
     parser = argparse.ArgumentParser()
     parser.add_argument('urqmd_file', metavar='URQMD_FILE', type=argparse.FileType('r'), help="Must be of type .f14")
     parser.add_argument('--after', default=40, type=float)
@@ -517,57 +509,48 @@ def main():
     parser.add_argument('--coloring-scheme', choices=('by_kind', 'by_pid'), default='by_pid')
     args = parser.parse_args()
 
-    DURATION = args.before + args.after
-    BEFORE = args.before
-    AFTER = args.after
-    CMS_BETA = args.cms_beta
-    BOOST_BETA = args.boost_beta
-    FM_PER_SEC = args.fm_per_sec
-
-    TOTAL_FM = DURATION * FM_PER_SEC
-
     start = time.time()
     cache_file = '.cache.'+os.path.basename(args.urqmd_file.name)+'.pickle'
     try:
         print("Trying to open a cached version of the .f14 output")
         with open(cache_file, 'rb') as f:
             data = pickle.load(f)
-            PS_TS = data['ps_ts']
-            TIMESTEPS = data['ts']
+            pts = data['pts']
+            ts = data['ts']
     except:
         print("Cached version unavailable, now parsing the .f14 file...")
         for event in F14_Parser(args.urqmd_file).get_events():
-            PARTICLES = [Particle(particle_properties) for particle_properties in event['particle_properties']]
-            TIMESTEPS = sorted(list(set(p.time for p in PARTICLES)))
-            PS_TS = []
+            particles = [Particle(particle_properties) for particle_properties in event['particle_properties']]
+            ts = sorted(list(set(p.time for p in particles)))
+            pts = []
             # naive approach:
-            for i, ts in enumerate(TIMESTEPS):
-                print(i, "out of", len(TIMESTEPS), "filtered")
+            for i, t in enumerate(ts):
+                print(i, "out of", len(ts), "filtered")
                 selection = []
-                for p in PARTICLES:
-                    if p.time == ts:
+                for p in particles:
+                    if p.time == t:
                         selection.append(p)
-                    if p.time > ts:
+                    if p.time > t:
                         break
                 for p in selection:
-                    PARTICLES.remove(p)
-                PS_TS.append(selection)
+                    particles.remove(p)
+                pts.append(selection)
             break # only read the very first event in the file
         with open(cache_file, 'wb') as f:
-            pickle.dump({'ts': TIMESTEPS, 'ps_ts': PS_TS}, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump({'ts': ts, 'pts': pts}, f, pickle.HIGHEST_PROTOCOL)
     print(f"Done reading F14 file after {time.time() - start:.3f} s")
 
     if args.boost_beta:
-        for ps in PS_TS:
+        for ps in pts:
             for p in ps:
                 p.boost(args.boost_beta)
         # The Lorentz boost changes our timesteps, too...
         # actually now every boosted particle has a different timestamp, so this is broken...
-        TIMESTEPS = sorted(list(set(ps[0].time for ps in PS_TS)))
-    # extract the projectile and target nucleons from the first timestep:
-    INITIAL = [p for p in PS_TS[0] if p.id == 1 and p.ncl == 0]
+        ts = sorted(list(set(ps[0].time for ps in PS_TS)))
 
-    c = HICCanvas(a=args.after,
+    c = HICCanvas(pts,
+                  ts,
+                  a=args.after,
                   b=args.before,
                   cb=args.cms_beta,
                   bb=args.boost_beta,
