@@ -552,14 +552,7 @@ def main():
                 for p in selection:
                     PARTICLES.remove(p)
                 PS_TS.append(selection)
-            # multi-threaded approach (killed by GIL):
-            #import multiprocessing
-            #p = multiprocessing.Pool(12)
-            #def f(ts):
-            #    return [p for p in PARTICLES if p.time == ts]
-            #PS_TS = p.map(f, TIMESTEPS)
-            #TIMESTEPS = sorted(list(set(p.time for p in PARTICLES)))
-            break # a single event is enough for us
+            break # only read the very first event in the file
         with open(cache_file, 'wb') as f:
             pickle.dump({'ts': TIMESTEPS, 'ps_ts': PS_TS}, f, pickle.HIGHEST_PROTOCOL)
     print(f"Done reading F14 file after {time.time() - start:.3f} s")
