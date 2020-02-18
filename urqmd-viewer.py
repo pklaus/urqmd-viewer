@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 
+"""
+(c) 2020, Philipp Klaus
+(c) 2014, Aurore Deschildre, Gael Goret, Cyrille Rossant, Nicolas P. Rougier.
+
+shader code adapted from Vispy's example molecular_viewer.py:
+https://github.com/vispy/vispy/blob/master/examples/demo/gloo/molecular_viewer.py
+
+Distributed under the terms of the new BSD License.
+"""
+
 # external dependencies:
 from vispy import app, gloo, visuals
 from vispy.util.transforms import perspective, translate, rotate
