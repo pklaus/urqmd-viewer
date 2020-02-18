@@ -6,6 +6,7 @@ from vispy.util.transforms import perspective, translate, rotate
 from vispy.visuals.transforms import STTransform, MatrixTransform
 import numpy as np
 import attr
+from pklaus.python.profiling.manual import ManualProfiler, plot
 from urqmd_tools.pids import LOOKUP_TABLE, ALL_SORTED
 from urqmd_tools.parser.f14 import F14_Parser, Particle
 
@@ -18,6 +19,8 @@ import time
 import pickle
 
 r = np.random.RandomState(1237+80)
+
+mp = ManualProfiler(strict_mode=False)
 
 VERT_SHADER = """
 #version 120
@@ -372,6 +375,7 @@ class HICCanvas(app.Canvas):
         self.stats_output()
 
     def on_timer(self, event):
+        mp.start('on_timer() iteration')
         start = time.time()
         if self.paused and not self.update_required:
             return
@@ -398,7 +402,9 @@ class HICCanvas(app.Canvas):
         mesons += [-meson for meson in mesons]
 
 
+        mp.start('particle position interpolation / calculation')
         if t <= self.ts[0]:
+            mp.start('t<0 calculation of particle positions')
             t_fm_0 = self.ts[0] # initial timestep
             ps = self.pts[0]
             #self.particles = np.zeros(len(ps), [('a_position', 'f4', 3),
@@ -413,6 +419,7 @@ class HICCanvas(app.Canvas):
             )
             # move everything else away...
             self.particles['a_position'][len(ps):] = 100000, 100000, 100000
+            mp.stop('t<0 calculation of particle positions')
         else:
             # find the best suiting timestamp for interpolation:
             for i, ts_fm in enumerate(self.ts):
@@ -422,11 +429,14 @@ class HICCanvas(app.Canvas):
             d_t_fm = t_fm - t_fm_0
             # fetch the particle set belonging to that timestep
             ps = self.pts[i]
+            mp.start('t>0 calculation of particle positions')
             #self.particles = np.zeros(len(ps), [('a_position', 'f4', 3),
             #                              ('a_color', 'f4', 4),
             #                              ('a_radius', 'f4')])
             self.particles['a_position'][0:len(ps)] = np.array([[p.rx, p.ry, p.rz] for p in ps]) +\
                + d_t_fm * np.array([p.beta3 for p in ps])
+            mp.stop('t>0 calculation of particle positions')
+        mp.stop('particle position interpolation / calculation')
 
         if self.print_current_particles:
             if self.print_current_particles_without_nucleons:
@@ -457,6 +467,7 @@ class HICCanvas(app.Canvas):
         self.particles['a_radius'][0:len(ps)] *= self.sf * self.pixel_scale
         #self.particles['a_radius'][0:len(ps)][[p.id == 1 for p in ps]] = 0.5
 
+        mp.start('particle coloring')
         # make any particles white that are not colored otherwise
         #self.particles['a_color'][0:len(ps)] = 1, 1, 1, 1
         a_color = np.zeros((len(ps), 4))
@@ -469,6 +480,7 @@ class HICCanvas(app.Canvas):
             a_color = np.array([self.pid_colors[p.id] for p in ps])
             a_color[[p.ncl == 0 for p in ps]] += (0.2, 0.2, 0.2, 0)
         self.particles['a_color'][0:len(ps)] = a_color
+        mp.stop('particle coloring')
 
 
         #self.particles['a_color'][len(ps):self.n] = 0, 0, 0, 0
@@ -488,11 +500,13 @@ class HICCanvas(app.Canvas):
 
         #print("mean position", self.particles['a_position'].mean())
 
-        self.program.bind(gloo.VertexBuffer(self.particles))
+        with mp.activity('VertexBuffer() and program.bind()'):
+            self.program.bind(gloo.VertexBuffer(self.particles))
 
         self.recent_tps.append(1/(time.time() - start))
 
         self.update()
+        mp.stop('on_timer() iteration')
 
 def main():
     parser = argparse.ArgumentParser()
@@ -562,6 +576,10 @@ def main():
                   c=args.coloring_scheme,
                  )
     app.run()
+
+    mp.finalize()
+    fig = plot(mp, show=False)
+    fig.savefig('profile.png')
 
 if __name__ == '__main__':
     main()
