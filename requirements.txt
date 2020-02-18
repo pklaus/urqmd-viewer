@@ -1,4 +1,4 @@
-urqmd_tools
+urqmd-tools
 vispy
 numpy
 attrs
