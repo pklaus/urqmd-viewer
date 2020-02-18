@@ -149,7 +149,6 @@ class HICCanvas(app.Canvas):
         self.print_current_particles_without_nucleons = True
 
         self.recent_fps = []
-        self.recent_tps = []
         self.last_update = 0.0
         self.last_stats_output = 0.0
 
@@ -160,7 +159,6 @@ class HICCanvas(app.Canvas):
         self.program = gloo.Program(VERT_SHADER, FRAG_SHADER)
 
         self.ps = self.pixel_scale
-        print(f"{self.pixel_scale=}")
 
         n = max([len(ps) for ps in self.pts])
         self.n = n
@@ -251,14 +249,9 @@ class HICCanvas(app.Canvas):
 
         self.show()
         end = time.time()
-        print(f"Canvas.__init__() done after {end-start:.3f} s")
 
     def on_key_press(self, event):
         if event.text == ' ':
-            #if self._timer.running:
-            #    self._timer.stop()
-            #else:
-            #    self._timer.start()
             self.paused = ~self.paused
             if self.paused:
                 self.pause_started = time.time()
@@ -351,18 +344,11 @@ class HICCanvas(app.Canvas):
         self.program['u_model'] = self.model
 
     def stats_output(self):
-        #print(f"{self.recent_fps[-1]:.1f} FPS")
-        if min(len(self.recent_tps), len(self.recent_fps)) < 2: return
-        if (time.time() - self.last_stats_output) > 2.0:
+        if len(self.recent_fps) < 2: return
+        if (time.time() - self.last_stats_output) > 0.5:
             self.last_stats_output = time.time()
-            # actual frames per second shown
             fps, self.recent_fps = self.recent_fps, []
-            print(f"{len(fps)=} {min(fps)=:.1f} {mean(fps)=:.1f} +- {stdev(fps):.1f} {max(fps)=:.1f}")
             self.lower_left_text.text = self.fps_fmt.format(mean(fps))
-            # timer duration (max possible timers per second)
-            tps, self.recent_tps = self.recent_tps, []
-            print(f"{len(tps)=} {min(tps)=:.1f} {mean(tps)=:.1f} +- {stdev(tps):.1f} {max(tps)=:.1f}")
-            print("-------------------")
 
 
     def update(self):
@@ -372,7 +358,6 @@ class HICCanvas(app.Canvas):
         self.stats_output()
 
     def on_timer(self, event):
-        start = time.time()
         if self.paused and not self.update_required:
             return
         self.update_required = False
@@ -384,7 +369,6 @@ class HICCanvas(app.Canvas):
         t = (now - self.start) % (self.a + self.b) - self.b
         t_fm = t * self.fmps # time in fm before (-) or after (+) the collision
         self.upper_left_text.text = self.time_fmt.format(t_fm)
-        #print(f"      {t:.1f} s  ~  {t_fm:.1f} fm")
 
         white = (1, 1, 1, 1)
         red = [1, 0.3, 0.3, 1]
@@ -489,9 +473,6 @@ class HICCanvas(app.Canvas):
         #print("mean position", self.particles['a_position'].mean())
 
         self.program.bind(gloo.VertexBuffer(self.particles))
-
-        self.recent_tps.append(1/(time.time() - start))
-
         self.update()
 
 def main():
@@ -509,7 +490,7 @@ def main():
     parser.add_argument('--coloring-scheme', choices=('by_kind', 'by_pid'), default='by_pid')
     args = parser.parse_args()
 
-    start = time.time()
+    start_loading_data = time.time()
     cache_file = '.cache.'+os.path.basename(args.urqmd_file.name)+'.pickle'
     try:
         print("Trying to open a cached version of the .f14 output")
@@ -538,7 +519,7 @@ def main():
             break # only read the very first event in the file
         with open(cache_file, 'wb') as f:
             pickle.dump({'ts': ts, 'pts': pts}, f, pickle.HIGHEST_PROTOCOL)
-    print(f"Done reading F14 file after {time.time() - start:.3f} s")
+    print("Done loading particle data after {:.3f} s".format(time.time() - start_loading_data))
 
     if args.boost_beta:
         for ps in pts:
