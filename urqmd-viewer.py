@@ -174,7 +174,6 @@ class HICCanvas(app.Canvas):
 
         n = max([len(ps) for ps in self.pts])
         self.n = n
-        print("maximum number of particles =", n)
         self.particles = np.zeros(n, [('a_position', 'f4', 3),
                                       ('a_color', 'f4', 4),
                                       ('a_radius', 'f4')])
@@ -291,7 +290,6 @@ class HICCanvas(app.Canvas):
         self.update()
 
     def on_resize(self, event):
-        print(event.size, event.physical_size)
         vp = (0, 0, *event.physical_size)
         gloo.set_viewport(*vp)
         #self.context.set_viewport(*vp)
@@ -484,8 +482,6 @@ class HICCanvas(app.Canvas):
         if round(t_fm*4)%2:
             self.particles['a_color'][0:len(ps)][[p.id in (27, 106, 108) for p in ps]] = white
 
-        #print("mean position", self.particles['a_position'].mean())
-
         self.program.bind(gloo.VertexBuffer(self.particles))
         self.update()
 
@@ -508,13 +504,13 @@ def main():
     start_loading_data = time.time()
     cache_file = '.cache.'+os.path.basename(args.urqmd_file.name)+'.pickle'
     try:
-        print("Trying to open a cached version of the .f14 output")
+        print("Trying to open a cached version of the .f14 data file.")
         with open(cache_file, 'rb') as f:
             data = pickle.load(f)
             pts = data['pts']
             ts = data['ts']
     except:
-        print("Cached version unavailable, now parsing the .f14 file...")
+        print("Cached version unavailable, now parsing the .f14 file.")
         for event in F14_Parser(args.urqmd_file).get_events():
             particles = [Particle(particle_properties) for particle_properties in event['particle_properties']]
             ts = sorted(list(set(p.time for p in particles)))
