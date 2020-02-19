@@ -1,6 +1,6 @@
 # urqmd-viewer
 
-[![thumbnail](https://i.imgur.com/uCDCTPS.png)](https://www.youtube.com/watch?v=BhDn4J84T9g&hd=1 "UrQMD Viewer in action (Youtube)")
+[![thumbnail](https://i.imgur.com/uCDCTPS.png)](https://www.youtube.com/watch?v=RdhlsGzYtwY&hd=1 "UrQMD Viewer in action (Youtube)")
 
 ## Prerequisits
 
