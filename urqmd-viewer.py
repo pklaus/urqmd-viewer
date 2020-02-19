@@ -257,6 +257,7 @@ class HICCanvas(app.Canvas):
         gloo.set_state(blend=True, blend_func=('src_alpha', 'one'))
         #gloo.wrappers.set_depth_range(near=-1000.0, far=10000.0)
 
+        self.fullscreen = True
         self.show()
         end = time.time()
 
