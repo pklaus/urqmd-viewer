@@ -215,9 +215,9 @@ class HICCanvas(app.Canvas):
         if self.theme == 'dark':
             text_color = (1, 1, 1, 1)
         self.fps_fmt = '{:.1f} FPS'
-        llt = visuals.TextVisual(self.fps_fmt.format(0.0), bold=True,
+        llt = visuals.TextVisual(self.fps_fmt.format(0.0), bold=False,
             pos=[10, self.physical_size[1] - 10 - 20 - 10], color=text_color, anchor_x='left', anchor_y='bottom',
-            method='gpu', font_size=20)
+            method='gpu', font_size=10)
         self.lower_left_text = llt
         self.visuals.append(llt)
         self.time_fmt = 'τ = {:.1f} fm'
