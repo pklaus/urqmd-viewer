@@ -119,7 +119,7 @@ class HICCanvas(app.Canvas):
 
     pid_colors = {urqmdpid.id: r.uniform(low=0.2, high=1.0, size=4) for urqmdpid in ALL_SORTED}
 
-    def __init__(self, pts, ts, b=7, a=23, fmps=2, cb=0.9224028, bb=0.0, sf=10, w=1920, h=1080, t='dark', c='by_pid'):
+    def __init__(self, pts, ts, b=7, a=23, fmps=2, cb=0.9224028, bb=0.0, sf=10, w=1920, h=1080, t='dark', c='by_pid', win=False):
         """
         pts: particles at different timesteps
         ts: list of the timesteps (in fm/c)
@@ -133,6 +133,7 @@ class HICCanvas(app.Canvas):
         h: viewport height
         t: theme ('bright' or 'dark')
         c: coloring scheme ('by_kind' or 'by_pid')
+        win: start in windowed mode instead of full-screen (use F11 to toggle during run)
         """
 
         start = time.time()
@@ -149,6 +150,7 @@ class HICCanvas(app.Canvas):
         self.h = h # view height
         self.theme = t
         self.coloring = c
+        self.windowed = win
 
         if self.theme not in ('bright', 'dark'):
             raise NotImplementedError('theme: %s' % self.theme)
@@ -257,7 +259,8 @@ class HICCanvas(app.Canvas):
         gloo.set_state(blend=True, blend_func=('src_alpha', 'one'))
         #gloo.wrappers.set_depth_range(near=-1000.0, far=10000.0)
 
-        self.fullscreen = True
+        if not self.windowed:
+            self.fullscreen = True
         self.show()
         end = time.time()
 
@@ -491,8 +494,9 @@ def main():
     parser.add_argument('urqmd_file', metavar='URQMD_FILE', type=argparse.FileType('r'), help="Must be of type .f14")
     parser.add_argument('--after', default=40, type=float)
     parser.add_argument('--before', default=5, type=float)
-    parser.add_argument('--width', default=1920, type=float)
-    parser.add_argument('--height', default=990, type=float)
+    parser.add_argument('--width', default=900, type=float)
+    parser.add_argument('--height', default=600, type=float)
+    parser.add_argument('--windowed', action='store_true')
     parser.add_argument('--cms-beta', default=0.9224028, type=float)
     parser.add_argument('--boost-beta', default=0.0, type=float)
     parser.add_argument('--fm-per-sec', default=3, type=float)
@@ -552,6 +556,7 @@ def main():
                   h=args.height,
                   t=args.theme,
                   c=args.coloring_scheme,
+                  win=args.windowed,
                  )
     app.run()
 
