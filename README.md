@@ -1,5 +1,7 @@
 # urqmd-viewer
 
+[![thumbnail](https://i.imgur.com/uCDCTPS.png)](https://www.youtube.com/watch?v=BhDn4J84T9g&hd=1 "UrQMD Viewer in action (Youtube)")
+
 ## Prerequisits
 
 * Linux or Mac OS (Windows might work, not tested)
