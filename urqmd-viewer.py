@@ -286,7 +286,7 @@ class HICCanvas(app.Canvas):
         elif event.key in ('p',):
             self.print_current_particles = True
         else:
-            print(event.key)
+            pass # print(event.key)
         self.update_required = True
         self.update()
 
