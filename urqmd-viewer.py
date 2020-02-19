@@ -220,7 +220,7 @@ class HICCanvas(app.Canvas):
             method='gpu', font_size=10)
         self.lower_left_text = llt
         self.visuals.append(llt)
-        self.time_fmt = 'τ = {:.1f} fm'
+        self.time_fmt = 'τ = {:.1f} fm/c'
         ult = visuals.TextVisual(self.time_fmt.format(0.0), bold=True,
             pos=[10, 10], color=text_color, anchor_x='left', anchor_y='bottom',
             method='gpu', font_size=20)
