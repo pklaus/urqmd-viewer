@@ -14,6 +14,8 @@ Distributed under the terms of the new BSD License.
 from vispy import app, gloo, visuals
 from vispy.util.transforms import perspective, translate, rotate
 from vispy.visuals.transforms import STTransform, MatrixTransform
+from vispy.util.ptime import time as vistime
+from vispy.gloo.util import _screenshot
 import numpy as np
 import attr
 from urqmd_tools.pids import LOOKUP_TABLE, ALL_SORTED
@@ -26,6 +28,8 @@ import sys
 import os
 import time
 import pickle
+
+app.use_app('glfw')
 
 r = np.random.RandomState(1237+80)
 
@@ -151,6 +155,8 @@ class HICCanvas(app.Canvas):
         self.theme = t
         self.coloring = c
         self.windowed = win
+        self._offscreen = True
+        self._offscreen_quit = False
 
         if self.theme not in ('bright', 'dark'):
             raise NotImplementedError('theme: %s' % self.theme)
@@ -203,7 +209,8 @@ class HICCanvas(app.Canvas):
         self.program['u_light_position'] = 0., 0., 2.
         self.program['u_light_spec_position'] = -5., 5., -5.
 
-        self._timer = app.Timer('auto', connect=self.on_timer, start=True)
+        if not self._offscreen:
+            self._timer = app.Timer('auto', connect=self.on_timer, start=True)
         self.start = time.time()
 
         self.paused = False
@@ -255,12 +262,21 @@ class HICCanvas(app.Canvas):
         elif self.theme == 'bright':
             gloo.set_state(depth_test=True, clear_color=(1, 1, 1, 1))
         # translucent particles:
-        gloo.set_state(blend=True, blend_func=('src_alpha', 'one'))
+        #gloo.set_state(blend=True, blend_func=('src_alpha', 'one'))
         #gloo.wrappers.set_depth_range(near=-1000.0, far=10000.0)
 
-        if not self.windowed:
-            self.fullscreen = True
-        self.show()
+        if self._offscreen:
+            # Offscreen Rendering
+            self._offscreen = True
+            self._t0 = vistime()
+            self._rendertex = gloo.Texture2D(shape=self.physical_size[::-1] + (4,))
+            self._fbo = gloo.FrameBuffer(self._rendertex,
+                gloo.RenderBuffer(self.physical_size[::-1]))
+            self._frames = []
+        else:
+            if not self.windowed:
+                self.fullscreen = True
+            self.show()
         end = time.time()
 
     def on_key_press(self, event):
@@ -336,7 +352,7 @@ class HICCanvas(app.Canvas):
             #elif button == 2:
             #    pass
 
-    def on_draw(self, event):
+    def draw(self, event):
         gloo.clear()
         # need to do this every time as the texts overwrites it:
         for v in (v for v in self.visuals if type(v) is not visuals.TextVisual):
@@ -344,7 +360,19 @@ class HICCanvas(app.Canvas):
         gloo.set_state(depth_test=True)
         self.program.draw('points')
         for v in (v for v in self.visuals if type(v) is visuals.TextVisual):
-            v.draw()
+            pass #v.draw()
+
+    def on_draw(self, event):
+        if not self._offscreen:
+            self.draw(event)
+        else:
+            self.on_timer(None)
+            # Render in the FBO.
+            with self._fbo:
+                self.draw(event) 
+                self._frames.append({'t': vistime() - self._t0, 'im': _screenshot((0, 0, *self.physical_size))[:, :, 0:3]})
+            if self._offscreen_quit:
+                app.quit()
 
     def update_model(self):
         mt = MatrixTransform()
@@ -374,11 +402,17 @@ class HICCanvas(app.Canvas):
             return
         self.update_required = False
 
-        if self.paused:
-            now = self.pause_started
+        if not self._offscreen:
+            if self.paused:
+                now = self.pause_started
+            else:
+                now = time.time()
+            t = (now - self.start) % (self.b + self.a) - self.b
         else:
-            now = time.time()
-        t = (now - self.start) % (self.a + self.b) - self.b
+            FPS = 30
+            t = len(self._frames) / FPS - self.b
+            if t >= self.a:
+                self._offscreen_quit = True
         t_fm = t * self.fmps # time in fm before (-) or after (+) the collision
         self.upper_left_text.text = self.time_fmt.format(t_fm)
 
@@ -555,6 +589,12 @@ def main():
                   win=args.windowed,
                  )
     app.run()
+    if c._offscreen:
+        from moviepy.editor import ImageClip, concatenate_videoclips
+        clips = [ImageClip(f['im']).set_duration(1/30)
+              for f in c._frames]
+        concat_clip = concatenate_videoclips(clips, method="compose")
+        concat_clip.write_videofile("urqmd-viewer.mp4", fps=30)
 
 if __name__ == '__main__':
     main()
