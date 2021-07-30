@@ -156,7 +156,11 @@ class HICCanvas(app.Canvas):
         self.coloring = c
         self.windowed = win
         self._offscreen = True
+        print('offscreen = True')
         self._offscreen_quit = False
+        self._offscreen_t = - self.b
+        self.last_on_timer = time.time() # better solved with a @decorator
+        self._n_rendered_frames = 0
 
         if self.theme not in ('bright', 'dark'):
             raise NotImplementedError('theme: %s' % self.theme)
@@ -210,7 +214,7 @@ class HICCanvas(app.Canvas):
         self.program['u_light_spec_position'] = -5., 5., -5.
 
         if not self._offscreen:
-            self._timer = app.Timer('auto', connect=self.on_timer, start=True)
+            self._timer = app.Timer(interval='auto', connect=self.on_timer, start=True)
         self.start = time.time()
 
         self.paused = False
@@ -224,20 +228,22 @@ class HICCanvas(app.Canvas):
             text_color = (1, 1, 1, 1)
         self.fps_fmt = '{:.1f} FPS'
         llt = visuals.TextVisual(self.fps_fmt.format(0.0), bold=False,
-            pos=[10, self.physical_size[1] - 10 - 20 - 10], color=text_color, anchor_x='left', anchor_y='bottom',
-            method='gpu', font_size=10)
+            pos=[10, self.size[1] - 10 - 20 - 10], color=text_color, anchor_x='left', anchor_y='bottom',
+            method='cpu', font_size=16)
         self.lower_left_text = llt
-        self.visuals.append(llt)
+        if not self._offscreen:
+            # hide FPS counter for offscreen rendering
+            self.visuals.append(llt)
         self.time_fmt = 'τ = {:.1f} fm/c'
         ult = visuals.TextVisual(self.time_fmt.format(0.0), bold=True,
             pos=[10, 10], color=text_color, anchor_x='left', anchor_y='bottom',
-            method='gpu', font_size=20)
+            method='cpu', font_size=20)
         self.upper_left_text = ult
         self.visuals.append(ult)
         #urt = visuals.TextVisual('© Philipp Klaus', bold=True,
         urt = visuals.TextVisual('UrQMD Viewer by @pklaus', bold=True,
-            pos=[self.physical_size[0] - 10, 10], color=text_color, anchor_x='right',
-            anchor_y='bottom', method='gpu', font_size=20)
+            pos=[self.size[0] - 10, 10], color=text_color, anchor_x='right',
+            anchor_y='bottom', method='cpu', font_size=20)
         self.upper_right_text = urt
         self.visuals.append(urt)
         line_pos = np.array([[0, 0, -100],
@@ -273,6 +279,9 @@ class HICCanvas(app.Canvas):
             self._fbo = gloo.FrameBuffer(self._rendertex,
                 gloo.RenderBuffer(self.physical_size[::-1]))
             self._frames = []
+            vp = (0, 0, *self.physical_size)
+            for v in (v for v in self.visuals if type(v) is visuals.TextVisual):
+                v.transforms.configure(canvas=self, viewport=vp)
         else:
             if not self.windowed:
                 self.fullscreen = True
@@ -307,6 +316,7 @@ class HICCanvas(app.Canvas):
 
     def on_resize(self, event):
         vp = (0, 0, *event.physical_size)
+        print(vp)
         gloo.set_viewport(*vp)
         #self.context.set_viewport(*vp)
         for v in (v for v in self.visuals if type(v) is visuals.TextVisual):
@@ -354,23 +364,28 @@ class HICCanvas(app.Canvas):
 
     def draw(self, event):
         gloo.clear()
-        # need to do this every time as the texts overwrites it:
         for v in (v for v in self.visuals if type(v) is not visuals.TextVisual):
-            pass#v.draw()
+            pass
+            #v.draw()
+        # need to do this every time as the texts overwrites it:
         gloo.set_state(depth_test=True)
         self.program.draw('points')
         for v in (v for v in self.visuals if type(v) is visuals.TextVisual):
-            pass #v.draw()
+            v.draw()
+            pass
 
     def on_draw(self, event):
+        #print('on_draw()')
+        self._n_rendered_frames += 1
         if not self._offscreen:
             self.draw(event)
         else:
-            self.on_timer(None)
+            #self.on_timer(None)
             # Render in the FBO.
             with self._fbo:
-                self.draw(event) 
+                self.draw(event)
                 self._frames.append({'t': vistime() - self._t0, 'im': _screenshot((0, 0, *self.physical_size))[:, :, 0:3]})
+                print(self._frames[-1]['im'].shape)
             if self._offscreen_quit:
                 app.quit()
 
@@ -398,6 +413,8 @@ class HICCanvas(app.Canvas):
         self.stats_output()
 
     def on_timer(self, event):
+        print("%.3f FPS  #%i" % (1/(time.time() - self.last_on_timer), self._n_rendered_frames))
+        self.last_on_timer = time.time()
         if self.paused and not self.update_required:
             return
         self.update_required = False
@@ -409,8 +426,12 @@ class HICCanvas(app.Canvas):
                 now = time.time()
             t = (now - self.start) % (self.b + self.a) - self.b
         else:
-            FPS = 30
-            t = len(self._frames) / FPS - self.b
+            FPS = 60
+            t = self._offscreen_t + 1/FPS
+            self._offscreen_t = t
+            #print(t)
+            #if (self.b + t) > 5:
+            #    self._offscreen_quit = True
             if t >= self.a:
                 self._offscreen_quit = True
         t_fm = t * self.fmps # time in fm before (-) or after (+) the collision
@@ -588,13 +609,59 @@ def main():
                   c=args.coloring_scheme,
                   win=args.windowed,
                  )
-    app.run()
-    if c._offscreen:
-        from moviepy.editor import ImageClip, concatenate_videoclips
-        clips = [ImageClip(f['im']).set_duration(1/30)
-              for f in c._frames]
-        concat_clip = concatenate_videoclips(clips, method="compose")
-        concat_clip.write_videofile("urqmd-viewer.mp4", fps=30)
+    if not c._offscreen:
+        app.run()
+    else:
+        from moviepy.video.io.ffmpeg_writer import ffmpeg_write_video
+        class MockClip:
+            def __init__(self, fps=60):
+                self.fps = fps
+                self.size = c.physical_size
+                self.duration = c.b + c.a
+            def iter_frames(self, **kwargs):
+                i = 0
+                while not c._offscreen_quit:
+                    while not c._offscreen_quit:
+                        c.on_timer(None)
+                        c.on_draw(None)
+                        if len(c._frames) > 300:
+                            break
+                    # implement this progress bar?
+                    # https://github.com/Zulko/moviepy/blob/master/moviepy/Clip.py#L471
+                    for f in c._frames:
+                        yield i/self.fps, f['im']
+                        i += 1
+                    c._frames = []
+        clip = MockClip(fps=60)
+        threads = None
+        bitrate = None
+        # --- Hardware Encoding on AMD Radeon RX580:
+        # see http://www.ffmpeg.org/ffmpeg-codecs.html#VAAPI-encoders
+        #codec = 'hevc_vaapi'
+        #codec = 'h264_vaapi'
+        #params = ['-vaapi_device', '/dev/dri/renderD128',
+        #          '-vf', 'format=nv12,hwupload']
+        #threads = 1
+        # --- Hardware Encoding on Nvidia RTX 2060:
+        # see https://trac.ffmpeg.org/wiki/HWAccelIntro#CUDANVENCNVDEC
+        #codec = 'h264_nvenc'
+        #params = ['-rc', 'constqp',
+        #          '-qp', '28']
+        # --- Hardware Encoding on newer Mac Hardware
+        #codec = 'h264_videotoolbox'
+        #params = ['-vf', 'format=nv12']
+        #params = None
+        #bitrate = '5000k'
+        # --- Software Encoding
+        # https://trac.ffmpeg.org/wiki/Encode/H.264
+        codec, params, bitrate = 'libx264', None, '5000k'
+        # https://trac.ffmpeg.org/wiki/Encode/H.265
+        #codec, params = 'libx265', None
+        # ffmpeg_write_video: https://github.com/Zulko/moviepy/blob/master/moviepy/video/io/ffmpeg_writer.py
+        ffmpeg_write_video(clip, "/home/pklaus/urqmd-viewer.mp4", 60,
+            codec=codec, bitrate=bitrate, preset="medium", withmask=False,
+            write_logfile=False, audiofile=None, verbose=True, threads=threads,
+            ffmpeg_params=params, logger='bar')
 
 if __name__ == '__main__':
     main()
